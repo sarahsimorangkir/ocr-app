@@ -3,10 +3,11 @@ import { embedText } from "@/lib/embed";
 import { SamuderaBastb } from "@/types/samudera-bastb";
 import { KimiaFarmaSkb } from "@/types/kimia-farma-skb";
 import { KimiaFarmaDelivery } from "@/types/kimia-farma-delivery";
+import { LotteMartDelivery } from "@/types/lotte-mart-delivery";
 import { v4 as uuidv4 } from "uuid";
 
-type DocFormat = "samudera-bastb" | "kimia-farma-skb" | "kimia-farma-delivery";
-type DocData = SamuderaBastb | KimiaFarmaSkb | KimiaFarmaDelivery;
+type DocFormat = "samudera-bastb" | "kimia-farma-skb" | "kimia-farma-delivery" | "lotte-mart-delivery";
+type DocData = SamuderaBastb | KimiaFarmaSkb | KimiaFarmaDelivery | LotteMartDelivery;
 
 // Convert each doc format into a plain searchable string
 function docToText(format: DocFormat, data: DocData): string {
@@ -69,6 +70,26 @@ function docToText(format: DocFormat, data: DocData): string {
     ].filter(Boolean).join("\n");
   }
 
+  if (format === "lotte-mart-delivery") {
+    const d = data as LotteMartDelivery;
+    const items = d.items.map(i =>
+      `${i.description} (Code: ${i.item_code}, Qty: ${i.quantity_delivered} ${i.uom})`
+    ).join("; ");
+    return [
+      `Lotte Mart Delivery Note`,
+      `Document No: ${d.header.document_no}`,
+      `Date: ${d.header.date}`,
+      `Store: ${d.header.store.name} (${d.header.store.code})`,
+      `PO No: ${d.references.po_no}`,
+      `SO No: ${d.references.so_no}`,
+      `Vehicle: ${d.references.vehicle_no}`,
+      `Driver: ${d.references.driver_name}`,
+      `Items: ${items}`,
+      `Total Quantity: ${d.totals.total_quantity}`,
+      `Note: ${d.note}`,
+    ].filter(Boolean).join("\n");
+  }
+
   return JSON.stringify(data);
 }
 
@@ -115,6 +136,19 @@ function docToMetadata(format: DocFormat, data: DocData): Record<string, string 
       driver: d.referensi.driver_no_mobil ?? "",
       material_count: d.materials.length,
       apoteker: d.signatories.apoteker_penanggung_jawab.nama ?? "",
+    };
+  }
+
+  if (format === "lotte-mart-delivery") {
+    const d = data as LotteMartDelivery;
+    return {
+      ...base,
+      document_no: d.header.document_no ?? "",
+      date: d.header.date ?? "",
+      store_name: d.header.store.name ?? "",
+      po_no: d.references.po_no ?? "",
+      total_quantity: d.totals.total_quantity ?? 0,
+      item_count: d.items.length,
     };
   }
 

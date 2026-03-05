@@ -4,10 +4,11 @@ import { useState, useRef } from "react";
 import { SamuderaBastb } from "@/types/samudera-bastb";
 import { KimiaFarmaSkb } from "@/types/kimia-farma-skb";
 import { KimiaFarmaDelivery } from "@/types/kimia-farma-delivery";
+import { LotteMartDelivery } from "@/types/lotte-mart-delivery";
 
-type DocFormat = "samudera-bastb" | "kimia-farma-skb" | "kimia-farma-delivery";
+type DocFormat = "samudera-bastb" | "kimia-farma-skb" | "kimia-farma-delivery" | "lotte-mart-delivery";
 type Status = "idle" | "converting" | "processing" | "done" | "error";
-type ResultData = SamuderaBastb | KimiaFarmaSkb | KimiaFarmaDelivery | null;
+type ResultData = SamuderaBastb | KimiaFarmaSkb | KimiaFarmaDelivery | LotteMartDelivery | null;
 
 async function pdfToBase64(file: File): Promise<string> {
   const pdfjsLib = await import("pdfjs-dist");
@@ -45,6 +46,12 @@ const FORMAT_CONFIG: Record<DocFormat, { label: string; description: string; end
     description: "Delivery Local",
     endpoint: "/api/ocr/kimia-farma-delivery",
     color: "purple",
+  },
+  "lotte-mart-delivery": {
+    label: "Lotte Mart Delivery",
+    description: "Surat Jalan / Delivery Note",
+    endpoint: "/api/ocr/lotte-mart-delivery",
+    color: "red",
   },
 };
 
@@ -196,6 +203,11 @@ export default function Home() {
         {/* ── Results: Kimia Farma Delivery ──────── */}
         {result && format === "kimia-farma-delivery" && (
           <KimiaFarmaDeliveryResult data={result as KimiaFarmaDelivery} />
+        )}
+
+        {/* ── Results: Lotte Mart Delivery ───────── */}
+        {result && format === "lotte-mart-delivery" && (
+          <LotteMartResult data={result as LotteMartDelivery} />
         )}
 
         {/* Raw JSON */}
@@ -440,6 +452,81 @@ function KimiaFarmaDeliveryResult({ data }: { data: KimiaFarmaDelivery }) {
           ))}
         </Section>
       )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// Lotte Mart Delivery Result View
+// ─────────────────────────────────────────────
+
+function LotteMartResult({ data }: { data: LotteMartDelivery }) {
+  return (
+    <div className="space-y-4">
+      <Section title="Header">
+        <Row label="No. Surat Jalan" value={data.header.document_no} />
+        <Row label="Tanggal" value={data.header.date} />
+        <Row label="Store" value={`${data.header.store.name} (${data.header.store.code})`} />
+        <Row label="Alamat Store" value={data.header.store.address} />
+        <Row label="Sender" value={data.header.sender.name} />
+      </Section>
+      <Section title="Referensi">
+        <Row label="PO No" value={data.references.po_no} />
+        <Row label="SO No" value={data.references.so_no} />
+        <Row label="No. Polisi" value={data.references.vehicle_no} />
+        <Row label="Supir" value={data.references.driver_name} />
+      </Section>
+
+      {/* Items Table */}
+      <Section title={`Items (${data.items.length})`}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs mt-2">
+            <thead>
+              <tr className="border-b border-gray-700">
+                <th className="text-left text-gray-400 py-2 pr-3">Item / Code</th>
+                <th className="text-right text-gray-400 py-2 px-2">Ordered</th>
+                <th className="text-right text-gray-400 py-2 px-2">Delivered</th>
+                <th className="text-left text-gray-400 py-2 px-2">Unit</th>
+                <th className="text-left text-gray-400 py-2">Remarks</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.items.map((item, i) => (
+                <tr key={i} className="border-b border-gray-800">
+                  <td className="py-2 pr-3">
+                    <p className="text-gray-200 font-medium">{item.description}</p>
+                    <p className="text-gray-500">{item.item_code}</p>
+                  </td>
+                  <td className="text-right text-gray-200 py-2 px-2">{item.quantity_ordered}</td>
+                  <td className="text-right text-gray-200 py-2 px-2">{item.quantity_delivered}</td>
+                  <td className="text-gray-300 py-2 px-2">{item.uom}</td>
+                  <td className="text-gray-400 py-2">{item.remarks}</td>
+                </tr>
+              ))}
+              {/* Total row */}
+              <tr className="bg-gray-800/50 font-semibold">
+                <td className="py-2 pr-3 text-gray-300">Total</td>
+                <td className="py-2 px-2"></td>
+                <td className="text-right text-gray-200 py-2 px-2">{data.totals.total_quantity}</td>
+                <td className="py-2 px-2"></td>
+                <td className="py-2"></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </Section>
+
+      {data.note && (
+        <Section title="Note">
+          <pre className="text-gray-200 text-sm whitespace-pre-wrap">{data.note}</pre>
+        </Section>
+      )}
+
+      <Section title="Tanda Tangan">
+        <Row label="Prepared By" value={data.signatories.prepared_by.nama} />
+        <Row label="Driver" value={data.signatories.driver.nama} />
+        <Row label="Received By" value={data.signatories.received_by.nama} />
+      </Section>
     </div>
   );
 }
