@@ -46,6 +46,11 @@ export interface LotteMartDelivery {
     so_no: string | null;          // Sales Order Number
     vehicle_no: string | null;     // License Plate
     driver_name: string | null;
+    id_trip_mostrans: string | null;
+    id_order: string | null;
+    resi_number: string | null;
+    origin: string | null;
+    destination: string | null;
   };
 
   // ── Items Table ────────────────────────────
@@ -83,6 +88,11 @@ export const emptyLotteMartDelivery: LotteMartDelivery = {
     so_no: null,
     vehicle_no: null,
     driver_name: null,
+    id_trip_mostrans: null,
+    id_order: null,
+    resi_number: null,
+    origin: null,
+    destination: null,
   },
   items: [],
   totals: {

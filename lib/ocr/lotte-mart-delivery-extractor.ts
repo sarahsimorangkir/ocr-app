@@ -1,103 +1,105 @@
 // lib/ocr/lotte-mart-delivery-extractor.ts
-// OCR extraction logic for Lotte Mart - Delivery Note / Surat Jalan
 
 import { LotteMartDelivery, emptyLotteMartDelivery } from "@/types/lotte-mart-delivery";
 
-const MODEL = "google/gemini-3-flash-preview"; 
+const MODEL = "google/gemini-2.0-flash-001"; // Highly capable OCR model
 
 // ─────────────────────────────────────────────
-// The Prompt
+// Specialized Prompts
 // ─────────────────────────────────────────────
 
-export function buildLotteMartDeliveryPrompt(): string {
-  return `You are an expert OCR system specializing in Indonesian retail logistics documents.
+export function buildGreenReceiptPrompt(): string {
+  return `You are an AI OCR agent. This is a "Green Receipt" from a delivery.
+  Extract the following information:
+  - Delivery Date
+  - Total Amount/Fee (if visible)
+  
+  Return ONLY JSON:
+  {
+    "delivery_date": "DD-MMM-YYYY",
+    "delivery_fee": 0
+  }`;
+}
 
-This image is a "Delivery Note" or "Surat Jalan" from LOTTE MART / LOTTE SHOPPING INDONESIA.
-It typically contains store branch info, reference numbers (PO/SO), and a detailed table of items with PLU/SKU codes.
-Extract ALL fields carefully, especially all rows in the items table.
+export function buildPinkDanexPrompt(): string {
+  return `You are an AI OCR agent specializing in Indonesian logistics. This is a "Pink Danex" document (Page 2).
+  
+  CRITICAL EXTRACTION RULES:
+  1. Mostrans Trip ID: Look for handwritten "trip", "+rip", or an 11-digit number in the top-right. Format: "TRIP-xxxxxxxxxxx".
+  2. Mostrans Order ID: Handwritten alphanumeric pattern (e.g., LGL2602070005) in center-right.
+  3. Resi Number: Look for AWB or No Resi.
+  4. Origin & Destination City: Extract ONLY the Indonesian city names.
 
-Return ONLY a valid JSON object with this EXACT structure. Do not include markdown, backticks, or explanations.
+  Return ONLY JSON:
+  {
+    "id_trip_mostrans": "TRIP-xxxxxxxxxxx",
+    "id_order": "...",
+    "resi_number": "...",
+    "origin": "...",
+    "destination": "..."
+  }`;
+}
 
-{
-  "header": {
-    "document_no": "No. Surat Jalan or similar e.g. SJ-001",
-    "date": "Document date e.g. 25-Oct-2023",
-    "store": {
-      "name": "Store/Branch name e.g. LOTTE GROSIR PASAR REBO",
-      "code": "Store code if any e.g. 001",
-      "address": "Store address if listed"
+export function buildLotteSJPrompt(): string {
+  return `You are an AI OCR agent specializing in Indonesian retail logistics. 
+  This is a LOTTE MART "Surat Jalan" (Delivery Note).
+  
+  Extract the header info, references (vehicle and driver), the complete table of items, and signatories.
+  
+  Return ONLY JSON:
+  {
+    "header": {
+      "document_no": "...",
+      "date": "...",
+      "store": { "name": "...", "code": "...", "address": "...", "city": "..." },
+      "sender": { "name": "PT. LOTTE SHOPPING INDONESIA", "address": "...", "city": "..." }
     },
-    "sender": {
-      "name": "PT. LOTTE SHOPPING INDONESIA or similar",
-      "address": "Sender address if listed"
+    "references": {
+      "vehicle_no": "...",
+      "driver_name": "...",
+      "po_no": "...",
+      "so_no": "..."
+    },
+    "items": [
+      { "item_code": "...", "description": "...", "quantity_ordered": 0, "quantity_delivered": 0, "uom": "...", "remarks": "..." }
+    ],
+    "totals": { "total_quantity": 0, "total_items": 0 },
+    "signatories": {
+      "prepared_by": { "nama": "...", "tanggal": "...", "jabatan": "..." },
+      "driver": { "nama": "...", "tanggal": "...", "jabatan": "..." },
+      "received_by": { "nama": "...", "tanggal": "...", "jabatan": "..." }
     }
-  },
-  "references": {
-    "po_no": "Purchase Order Number e.g. PO-882711",
-    "so_no": "Sales Order Number e.g. SO-112233",
-    "vehicle_no": "License plate number e.g. B 1234 ABC",
-    "driver_name": "Name of the driver"
-  },
-  "items": [
-    {
-      "item_code": "PLU, SKU, or Barcode e.g. 880101",
-      "description": "Full product name e.g. Indomie Goreng Spesial 85g",
-      "quantity_ordered": 40,
-      "quantity_delivered": 40,
-      "uom": "Unit e.g. PCS, CTN, BOX",
-      "remarks": "Any notes for this item"
-    }
-  ],
-  "totals": {
-    "total_quantity": 40,
-    "total_items": 1
-  },
-  "signatories": {
-    "prepared_by": { "nama": "Admin name", "tanggal": "date", "jabatan": "e.g. Admin" },
-    "driver": { "nama": "Driver name", "tanggal": "date", "jabatan": "e.g. Driver" },
-    "received_by": { "nama": "Receiver name", "tanggal": "date", "jabatan": "e.g. Receiver/Store Stamp" }
-  },
-  "note": "Any additional notes listed on the document"
-}
-
-Important rules:
-- items must be an array — extract EVERY row in the table
-- quantity_ordered, quantity_delivered, total_quantity, total_items must be integers
-- For empty/blank fields use null
-- Return ONLY the JSON — no other text`;
+  }`;
 }
 
 // ─────────────────────────────────────────────
-// API Caller
+// Helper: Call OpenRouter
 // ─────────────────────────────────────────────
 
-export async function extractLotteMartDelivery(
-  imageBase64: string
-): Promise<LotteMartDelivery> {
+async function callOpenRouter(
+  images: string[], 
+  prompt: string,
+  isUrl: boolean = false
+): Promise<any> {
   const apiKey = process.env.OPENROUTER_API_KEY!;
+  const messageContent: any[] = images.map((img) => ({
+    type: "image_url",
+    image_url: { url: isUrl ? img : `data:image/png;base64,${img}` },
+  }));
+  messageContent.push({ type: "text", text: prompt });
 
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
-      "HTTP-Referer": "http://localhost:3000",
+      "HTTP-Referer": process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
     },
     body: JSON.stringify({
       model: MODEL,
-      max_tokens: 2048,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "image_url",
-              image_url: { url: `data:image/png;base64,${imageBase64}` },
-            },
-            { type: "text", text: buildLotteMartDeliveryPrompt() },
-          ],
-        },
-      ],
+      max_tokens: 4000,
+      temperature: 0.1,
+      messages: [{ role: "user", content: messageContent }],
     }),
   });
 
@@ -108,15 +110,73 @@ export async function extractLotteMartDelivery(
 
   const data = await response.json();
   const rawText: string = data.choices[0].message.content;
-
   try {
     const cleaned = rawText.replace(/```json|```/g, "").trim();
-    return JSON.parse(cleaned) as LotteMartDelivery;
+    return JSON.parse(cleaned);
   } catch {
-    console.error("JSON parse failed, raw text:", rawText);
-    return {
-      ...emptyLotteMartDelivery,
-      note: `[OCR parse error] Raw: ${rawText.slice(0, 200)}`,
-    };
+    console.error("JSON parse failed for response:", rawText);
+    return null;
   }
+}
+
+// ─────────────────────────────────────────────
+// Main API Caller
+// ─────────────────────────────────────────────
+
+export async function extractLotteMartDelivery(
+  imagesBase64: string | string[],
+  imageUrls?: string[]
+): Promise<LotteMartDelivery> {
+  const imageArray = Array.isArray(imagesBase64) ? imagesBase64 : [imagesBase64];
+  const urlArray = imageUrls || [];
+  const useUrls = urlArray.length > 0;
+  const sourceArray = useUrls ? urlArray : imageArray;
+
+  let greenData: any = null;
+  let pinkData: any = null;
+  let sjData: any = null;
+
+  try {
+    if (sourceArray.length >= 3) {
+      const [g, p, s] = await Promise.all([
+        callOpenRouter([sourceArray[0]], buildGreenReceiptPrompt(), useUrls),
+        callOpenRouter([sourceArray[1]], buildPinkDanexPrompt(), useUrls),
+        callOpenRouter(sourceArray.slice(2), buildLotteSJPrompt(), useUrls),
+      ]);
+      greenData = g;
+      pinkData = p;
+      sjData = s;
+    } else if (sourceArray.length === 2) {
+      const [p, s] = await Promise.all([
+        callOpenRouter([sourceArray[0]], buildPinkDanexPrompt(), useUrls),
+        callOpenRouter([sourceArray[1]], buildLotteSJPrompt(), useUrls),
+      ]);
+      pinkData = p;
+      sjData = s;
+    } else if (sourceArray.length === 1) {
+      sjData = await callOpenRouter([sourceArray[0]], buildLotteSJPrompt(), useUrls);
+    }
+  } catch (error) {
+    console.error("OCR extraction failed:", error);
+  }
+
+  const result: LotteMartDelivery = {
+    ...emptyLotteMartDelivery,
+    header: {
+      ...emptyLotteMartDelivery.header,
+      ...(sjData?.header || {}),
+      date: sjData?.header?.date || greenData?.delivery_date || null,
+    },
+    references: {
+      ...emptyLotteMartDelivery.references,
+      ...(sjData?.references || {}),
+      ...(pinkData || {}),
+    },
+    items: sjData?.items || [],
+    totals: sjData?.totals || { total_quantity: null, total_items: null },
+    signatories: sjData?.signatories || emptyLotteMartDelivery.signatories,
+    note: greenData?.delivery_fee ? `Verified Delivery Fee: ${greenData.delivery_fee}` : null,
+  };
+
+  return result;
 }

@@ -10,22 +10,30 @@ type DocFormat = "samudera-bastb" | "kimia-farma-skb" | "kimia-farma-delivery" |
 type Status = "idle" | "converting" | "processing" | "done" | "error";
 type ResultData = SamuderaBastb | KimiaFarmaSkb | KimiaFarmaDelivery | LotteMartDelivery | null;
 
-async function pdfToBase64(file: File): Promise<string> {
+async function pdfToImages(file: File): Promise<string[]> {
   const pdfjsLib = await import("pdfjs-dist");
   pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.mjs";
 
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-  const page = await pdf.getPage(1);
-  const viewport = page.getViewport({ scale: 2.5 });
+  const images: string[] = [];
 
-  const canvas = document.createElement("canvas");
-  canvas.width = viewport.width;
-  canvas.height = viewport.height;
-  const context = canvas.getContext("2d")!;
+  // Limit to first 5 pages to avoid massive payloads, adjust as needed
+  const pagesToProcess = Math.min(pdf.numPages, 5);
 
-  await page.render({ canvasContext: context, viewport, canvas }).promise;
-  return canvas.toDataURL("image/png").split(",")[1];
+  for (let i = 1; i <= pagesToProcess; i++) {
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale: 2.0 });
+
+    const canvas = document.createElement("canvas");
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const context = canvas.getContext("2d")!;
+
+    await page.render({ canvasContext: context, viewport, canvas }).promise;
+    images.push(canvas.toDataURL("image/png").split(",")[1]);
+  }
+  return images;
 }
 
 const FORMAT_CONFIG: Record<DocFormat, { label: string; description: string; endpoint: string; color: string }> = {
@@ -71,13 +79,17 @@ export default function Home() {
     setResult(null);
 
     try {
-      const imageBase64 = await pdfToBase64(file);
+      const imagesBase64 = await pdfToImages(file);
+      
       setStatus("processing");
 
       const res = await fetch(FORMAT_CONFIG[format].endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageBase64, store: shouldStore }),
+        body: JSON.stringify({ 
+          imageBase64: imagesBase64, // Now an array
+          store: shouldStore 
+        }),
       });
 
       const json = await res.json();
@@ -471,10 +483,13 @@ function LotteMartResult({ data }: { data: LotteMartDelivery }) {
         <Row label="Sender" value={data.header.sender.name} />
       </Section>
       <Section title="Referensi">
-        <Row label="PO No" value={data.references.po_no} />
-        <Row label="SO No" value={data.references.so_no} />
         <Row label="No. Polisi" value={data.references.vehicle_no} />
         <Row label="Supir" value={data.references.driver_name} />
+        <Row label="Mostrans Trip ID" value={data.references.id_trip_mostrans} />
+        <Row label="Mostrans Order ID" value={data.references.id_order} />
+        <Row label="Resi / AWB" value={data.references.resi_number} />
+        <Row label="Origin" value={data.references.origin} />
+        <Row label="Destination" value={data.references.destination} />
       </Section>
 
       {/* Items Table */}
@@ -523,9 +538,14 @@ function LotteMartResult({ data }: { data: LotteMartDelivery }) {
       )}
 
       <Section title="Tanda Tangan">
-        <Row label="Prepared By" value={data.signatories.prepared_by.nama} />
-        <Row label="Driver" value={data.signatories.driver.nama} />
-        <Row label="Received By" value={data.signatories.received_by.nama} />
+        <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Prepared By</p>
+        <Row label="Nama" value={data.signatories.prepared_by.nama} />
+        <Row label="Tanggal" value={data.signatories.prepared_by.tanggal} />
+        <p className="text-xs text-gray-500 uppercase tracking-wider mt-3 mb-2">Driver</p>
+        <Row label="Nama" value={data.signatories.driver.nama} />
+        <p className="text-xs text-gray-500 uppercase tracking-wider mt-3 mb-2">Received By</p>
+        <Row label="Nama" value={data.signatories.received_by.nama} />
+        <Row label="Tanggal" value={data.signatories.received_by.tanggal} />
       </Section>
     </div>
   );
