@@ -4,10 +4,11 @@ import { SamuderaBastb } from "@/types/samudera-bastb";
 import { KimiaFarmaSkb } from "@/types/kimia-farma-skb";
 import { KimiaFarmaDelivery } from "@/types/kimia-farma-delivery";
 import { LotteMartDelivery } from "@/types/lotte-mart-delivery";
+import { EnsevalSuratJalan } from "@/types/enseval-surat-jalan";
 import { v4 as uuidv4 } from "uuid";
 
-type DocFormat = "samudera-bastb" | "kimia-farma-skb" | "kimia-farma-delivery" | "lotte-mart-delivery";
-type DocData = SamuderaBastb | KimiaFarmaSkb | KimiaFarmaDelivery | LotteMartDelivery;
+type DocFormat = "samudera-bastb" | "kimia-farma-skb" | "kimia-farma-delivery" | "lotte-mart-delivery" | "enseval-surat-jalan";
+type DocData = SamuderaBastb | KimiaFarmaSkb | KimiaFarmaDelivery | LotteMartDelivery | EnsevalSuratJalan;
 
 // Convert each doc format into a plain searchable string
 function docToText(format: DocFormat, data: DocData): string {
@@ -90,6 +91,25 @@ function docToText(format: DocFormat, data: DocData): string {
     ].filter(Boolean).join("\n");
   }
 
+  if (format === "enseval-surat-jalan") {
+    const d = data as EnsevalSuratJalan;
+    const items = d.shiplist.map(i =>
+      `${i.keterangan || ''} (Koli: ${i.jumlah_koli}, Berat: ${i.berat_kg}kg, Vol: ${i.volume_m3}m3)`
+    ).join("; ");
+    return [
+      `Enseval Surat Jalan`,
+      `No Surat Jalan: ${d.no_surat_jalan}`,
+      `Pengirim: ${d.pengirim.nama} - ${d.pengirim.cabang}`,
+      `Penerima: ${d.penerima.nama} di ${d.penerima.kota}`,
+      `Tanggal: ${d.penerima.tanggal}`,
+      `Items: ${items}`,
+      `Total Koli: ${d.total.jumlah_koli}`,
+      `Total Berat: ${d.total.berat_kg} kg`,
+      `Pengiriman Via: ${d.pengiriman.via}`,
+      `Tujuan: ${d.tujuan.nama} di ${d.tujuan.kota}`,
+    ].filter(Boolean).join("\n");
+  }
+
   return JSON.stringify(data);
 }
 
@@ -149,6 +169,21 @@ function docToMetadata(format: DocFormat, data: DocData): Record<string, string 
       po_no: d.references.po_no ?? "",
       total_quantity: d.totals.total_quantity ?? 0,
       item_count: d.items.length,
+    };
+  }
+
+  if (format === "enseval-surat-jalan") {
+    const d = data as EnsevalSuratJalan;
+    return {
+      ...base,
+      no_surat_jalan: d.no_surat_jalan ?? "",
+      tanggal: d.penerima.tanggal ?? "",
+      pengirim_nama: d.pengirim.nama ?? "",
+      penerima_nama: d.penerima.nama ?? "",
+      jumlah_koli: d.total.jumlah_koli ?? 0,
+      berat_kg: d.total.berat_kg ?? 0,
+      via: d.pengiriman.via ?? "",
+      tujuan_kota: d.tujuan.kota ?? "",
     };
   }
 
