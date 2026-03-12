@@ -5,11 +5,11 @@ import { SamuderaBastb } from "@/types/samudera-bastb";
 import { KimiaFarmaSkb } from "@/types/kimia-farma-skb";
 import { KimiaFarmaDelivery } from "@/types/kimia-farma-delivery";
 import { LotteMartDelivery } from "@/types/lotte-mart-delivery";
-import { DbmCargoInvoice } from "@/types/dbm-cargo-invoice";
+import { EnsevalSuratJalan } from "@/types/enseval-surat-jalan";
 
 type DocFormat = "samudera-bastb" | "kimia-farma-skb" | "kimia-farma-delivery" | "lotte-mart-delivery" | "dbm-cargo-invoice";
 type Status = "idle" | "converting" | "processing" | "done" | "error";
-type ResultData = SamuderaBastb | KimiaFarmaSkb | KimiaFarmaDelivery | LotteMartDelivery | DbmCargoInvoice | null;
+type ResultData = SamuderaBastb | KimiaFarmaSkb | KimiaFarmaDelivery | LotteMartDelivery | EnsevalSuratJalan | null;
 
 async function pdfToImages(file: File): Promise<string[]> {
   const pdfjsLib = await import("pdfjs-dist");
@@ -19,7 +19,6 @@ async function pdfToImages(file: File): Promise<string[]> {
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
   const images: string[] = [];
 
-  // Limit to first 5 pages to avoid massive payloads, adjust as needed
   const pagesToProcess = Math.min(pdf.numPages, 5);
 
   for (let i = 1; i <= pagesToProcess; i++) {
@@ -65,7 +64,7 @@ const FORMAT_CONFIG: Record<DocFormat, { label: string; description: string; end
   "dbm-cargo-invoice": {
     label: "DBM Cargo Invoice",
     description: "Invoice DBM Cargo & Logistics",
-    endpoint: "/api/ocr/dbm-cargo",
+    endpoint: "/api/ocr/enseval-surat-jalan",
     color: "orange",
   },
 };
@@ -87,15 +86,14 @@ export default function Home() {
 
     try {
       const imagesBase64 = await pdfToImages(file);
-      
       setStatus("processing");
 
       const res = await fetch(FORMAT_CONFIG[format].endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          imageBase64: imagesBase64, // Now an array
-          store: shouldStore 
+        body: JSON.stringify({
+          imageBase64: imagesBase64,
+          store: shouldStore
         }),
       });
 
@@ -145,11 +143,10 @@ export default function Home() {
               <button
                 key={key}
                 onClick={() => { setFormat(key); reset(); }}
-                className={`p-4 rounded-xl border-2 text-left transition-all ${
-                  format === key
+                className={`p-4 rounded-xl border-2 text-left transition-all ${format === key
                     ? "border-blue-500 bg-blue-900/20"
                     : "border-gray-700 bg-gray-900 hover:border-gray-500"
-                }`}
+                  }`}
               >
                 <p className="font-semibold text-white text-sm">{FORMAT_CONFIG[key].label}</p>
                 <p className="text-gray-400 text-xs mt-0.5">{FORMAT_CONFIG[key].description}</p>
@@ -185,7 +182,7 @@ export default function Home() {
             )
           }
         </div>
-          <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
+        <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
           <input
             type="checkbox"
             checked={shouldStore}
@@ -229,9 +226,9 @@ export default function Home() {
           <LotteMartResult data={result as LotteMartDelivery} />
         )}
 
-        {/* ── Results: DBM Cargo Invoice ──────────── */}
+        {/* ── Results: DBM Cargo Invoice → EPM Surat Jalan ── */}
         {result && format === "dbm-cargo-invoice" && (
-          <DbmCargoResult data={result as DbmCargoInvoice} />
+          <EnsevalResult data={result as EnsevalSuratJalan} />
         )}
 
         {/* Raw JSON */}
@@ -399,8 +396,6 @@ function KimiaFarmaDeliveryResult({ data }: { data: KimiaFarmaDelivery }) {
         <Row label="Driver / No. Mobil" value={data.referensi.driver_no_mobil} />
         <Row label="Fwd Agent" value={data.referensi.fwd_agent} />
       </Section>
-
-      {/* Materials Table */}
       <Section title={`Materials (${data.materials.length} item${data.materials.length !== 1 ? "s" : ""})`}>
         <div className="overflow-x-auto">
           <table className="w-full text-xs mt-2">
@@ -433,7 +428,6 @@ function KimiaFarmaDeliveryResult({ data }: { data: KimiaFarmaDelivery }) {
                   <td className="text-right text-gray-200 py-2">{m.volume}</td>
                 </tr>
               ))}
-              {/* Total row */}
               <tr className="bg-gray-800/50 font-semibold">
                 <td className="py-2 pr-3 text-gray-300">Total</td>
                 <td className="py-2 px-2"></td>
@@ -448,13 +442,11 @@ function KimiaFarmaDeliveryResult({ data }: { data: KimiaFarmaDelivery }) {
           </table>
         </div>
       </Section>
-
       {data.note && (
         <Section title="Note">
           <pre className="text-gray-200 text-sm whitespace-pre-wrap">{data.note}</pre>
         </Section>
       )}
-
       <Section title="Tanda Tangan">
         <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Received By</p>
         <Row label="Nama" value={data.signatories.received_by.nama} />
@@ -468,7 +460,6 @@ function KimiaFarmaDeliveryResult({ data }: { data: KimiaFarmaDelivery }) {
         <Row label="Tanggal" value={data.signatories.issued_by.tanggal} />
         <Row label="Jabatan" value={data.signatories.issued_by.jabatan} />
       </Section>
-
       {data.tembusan.length > 0 && (
         <Section title="Tembusan">
           {data.tembusan.map((t, i) => (
@@ -503,8 +494,6 @@ function LotteMartResult({ data }: { data: LotteMartDelivery }) {
         <Row label="Origin" value={data.references.origin} />
         <Row label="Destination" value={data.references.destination} />
       </Section>
-
-      {/* Items Table */}
       <Section title={`Items (${data.items.length})`}>
         <div className="overflow-x-auto">
           <table className="w-full text-xs mt-2">
@@ -530,7 +519,6 @@ function LotteMartResult({ data }: { data: LotteMartDelivery }) {
                   <td className="text-gray-400 py-2">{item.remarks}</td>
                 </tr>
               ))}
-              {/* Total row */}
               <tr className="bg-gray-800/50 font-semibold">
                 <td className="py-2 pr-3 text-gray-300">Total</td>
                 <td className="py-2 px-2"></td>
@@ -542,13 +530,11 @@ function LotteMartResult({ data }: { data: LotteMartDelivery }) {
           </table>
         </div>
       </Section>
-
       {data.note && (
         <Section title="Note">
           <pre className="text-gray-200 text-sm whitespace-pre-wrap">{data.note}</pre>
         </Section>
       )}
-
       <Section title="Tanda Tangan">
         <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Prepared By</p>
         <Row label="Nama" value={data.signatories.prepared_by.nama} />
@@ -564,79 +550,95 @@ function LotteMartResult({ data }: { data: LotteMartDelivery }) {
 }
 
 // ─────────────────────────────────────────────
-// DBM Cargo Invoice Result View
+// DBM Cargo Invoice → EPM Surat Jalan Result View
 // ─────────────────────────────────────────────
 
-function DbmCargoResult({ data }: { data: DbmCargoInvoice }) {
+function EnsevalResult({ data }: { data: EnsevalSuratJalan }) {
   return (
     <div className="space-y-4">
-      <Section title="Header Invoice">
-        <Row label="No. Invoice" value={data.header.no_invoice} />
-        <Row label="Tanggal" value={data.header.tanggal} />
-        <Row label="Jatuh Tempo" value={data.header.jatuh_tempo} />
+      <Section title="Surat Jalan">
+        <Row label="No. Surat Jalan" value={data.no_surat_jalan} />
+        <Row label="Cetak" value={data.cetak} />
       </Section>
-      <Section title="Penerima (TO)">
-        <Row label="Nama" value={data.to.nama} />
-        <Row label="Alamat" value={data.to.alamat} />
+      <Section title="Pengirim">
+        <Row label="Nama" value={data.pengirim.nama} />
+        <Row label="Cabang" value={data.pengirim.cabang} />
+        <Row label="Alamat" value={data.pengirim.alamat} />
+        <Row label="Kawasan" value={data.pengirim.kawasan} />
+        <Row label="Kota" value={data.pengirim.kota} />
       </Section>
-      <Section title="Info Transfer">
-        <Row label="Perusahaan" value={data.transfer.nama_perusahaan} />
-        <Row label="No. Rekening" value={data.transfer.no_rekening} />
-        <Row label="Bank" value={data.transfer.nama_bank} />
+      <Section title="Penerima (Kepada Yth.)">
+        <Row label="Tanggal" value={data.penerima.tanggal} />
+        <Row label="Nama" value={data.penerima.nama} />
+        <Row label="Alamat" value={data.penerima.alamat} />
+        <Row label="Kota" value={data.penerima.kota} />
       </Section>
-      <Section title={`Items (${data.items.length})`}>
+      <Section title="Tujuan Pengiriman">
+        <Row label="Nama" value={data.tujuan.nama} />
+        <Row label="Alamat" value={data.tujuan.alamat} />
+        <Row label="Kota" value={data.tujuan.kota} />
+        <Row label="Negara" value={data.tujuan.negara} />
+      </Section>
+      <Section title="Info Pengiriman">
+        <Row label="Via" value={data.pengiriman.via} />
+        <Row label="No. Kendaraan" value={data.pengiriman.no_kendaraan} />
+        <Row label="No. Segel" value={data.pengiriman.no_segel} />
+        <Row label="No. Container" value={data.pengiriman.no_container} />
+        <Row label="Perhitungan" value={data.pengiriman.perhitungan} />
+        <Row label="Shiplist No." value={data.pengiriman.shiplist_no} />
+        <Row label="Keterangan" value={data.pengiriman.keterangan} />
+      </Section>
+      <Section title={`Shiplist (${data.shiplist.length} item)`}>
         <div className="overflow-x-auto">
           <table className="w-full text-xs mt-2">
             <thead>
               <tr className="border-b border-gray-700">
-                <th className="text-left text-gray-400 py-2 pr-3">Tgl / AWB</th>
-                <th className="text-left text-gray-400 py-2 px-2">Jenis</th>
-                <th className="text-left text-gray-400 py-2 px-2">Dest</th>
-                <th className="text-right text-gray-400 py-2 px-2">KG</th>
-                <th className="text-right text-gray-400 py-2 px-2">Barang</th>
-                <th className="text-right text-gray-400 py-2 px-2">Packing</th>
-                <th className="text-right text-gray-400 py-2">Total</th>
+                <th className="text-left text-gray-400 py-2 pr-3">Kemasan</th>
+                <th className="text-right text-gray-400 py-2 px-2">Koli</th>
+                <th className="text-right text-gray-400 py-2 px-2">Berat (KG)</th>
+                <th className="text-right text-gray-400 py-2 px-2">Volume (M3)</th>
+                <th className="text-left text-gray-400 py-2">Keterangan</th>
               </tr>
             </thead>
             <tbody>
-              {data.items.map((item, i) => (
+              {data.shiplist.map((item, i) => (
                 <tr key={i} className="border-b border-gray-800">
-                  <td className="py-2 pr-3">
-                    <p className="text-gray-200 font-medium">{item.tanggal}</p>
-                    <p className="text-gray-500 font-mono">{item.no_awb}</p>
-                  </td>
-                  <td className="text-gray-300 py-2 px-2">{item.jenis}</td>
-                  <td className="text-gray-300 py-2 px-2">{item.dest}</td>
-                  <td className="text-right text-gray-200 py-2 px-2">{item.barang.kg}</td>
-                  <td className="text-right text-gray-200 py-2 px-2">{item.barang.jumlah?.toLocaleString("id-ID")}</td>
-                  <td className="text-right text-gray-200 py-2 px-2">{item.packing.jumlah?.toLocaleString("id-ID")}</td>
-                  <td className="text-right text-gray-200 py-2">{item.total?.toLocaleString("id-ID")}</td>
+                  <td className="text-gray-200 py-2 pr-3">{item.kemasan}</td>
+                  <td className="text-right text-gray-200 py-2 px-2">{item.jumlah_koli}</td>
+                  <td className="text-right text-gray-200 py-2 px-2">{item.berat_kg}</td>
+                  <td className="text-right text-gray-200 py-2 px-2">{item.volume_m3}</td>
+                  <td className="text-gray-400 py-2">{item.keterangan}</td>
                 </tr>
               ))}
+              <tr className="bg-gray-800/50 font-semibold">
+                <td className="py-2 pr-3 text-gray-300">Total ({data.total.terbilang_koli})</td>
+                <td className="text-right text-gray-200 py-2 px-2">{data.total.jumlah_koli}</td>
+                <td className="text-right text-gray-200 py-2 px-2">{data.total.berat_kg}</td>
+                <td className="text-right text-gray-200 py-2 px-2">{data.total.volume_m3}</td>
+                <td className="py-2"></td>
+              </tr>
             </tbody>
           </table>
         </div>
       </Section>
-      <Section title="Summary">
-        <Row label="Gross Barang" value={data.summary.gross_barang?.toLocaleString("id-ID")} />
-        <Row label="Gross Packing" value={data.summary.gross_packing?.toLocaleString("id-ID")} />
-        <Row label="Gross Total" value={data.summary.gross_total?.toLocaleString("id-ID")} />
-        <Row label="Discount" value={data.summary.discount?.toLocaleString("id-ID")} />
-        <Row label="Netto" value={data.summary.netto?.toLocaleString("id-ID")} />
-        <Row label={`PPN ${data.summary.ppn_persen}%`} value={data.summary.ppn_nominal?.toLocaleString("id-ID")} />
-        <Row label="Materai" value={data.summary.materai?.toLocaleString("id-ID")} />
-        <Row label="Total" value={data.summary.total?.toLocaleString("id-ID")} />
+      <Section title="Tanda Tangan">
+        {(["penerima_cab", "manager_ass_mgr", "expeditur", "adm_dist_desp_supv"] as const).map((key) => (
+          <div key={key} className="mb-3 last:mb-0">
+            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">
+              {key.replace(/_/g, " ")}
+            </p>
+            <Row label="Nama" value={data.signatories[key].nama} />
+            <Row label="Tanggal" value={data.signatories[key].tanggal} />
+            <Row label="TTD" value={data.signatories[key].ttd ? "✓ Signed" : "—"} />
+          </div>
+        ))}
       </Section>
-      {data.terbilang && (
-        <Section title="Terbilang">
-          <p className="text-gray-200 text-sm italic">{data.terbilang}</p>
-        </Section>
-      )}
     </div>
   );
 }
 
 // ─────────────────────────────────────────────
+// Shared Helper Components
 // ─────────────────────────────────────────────
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
