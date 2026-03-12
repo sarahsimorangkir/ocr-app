@@ -5,10 +5,11 @@ import { SamuderaBastb } from "@/types/samudera-bastb";
 import { KimiaFarmaSkb } from "@/types/kimia-farma-skb";
 import { KimiaFarmaDelivery } from "@/types/kimia-farma-delivery";
 import { LotteMartDelivery } from "@/types/lotte-mart-delivery";
+import { DbmCargoInvoice } from "@/types/dbm-cargo-invoice";
 
-type DocFormat = "samudera-bastb" | "kimia-farma-skb" | "kimia-farma-delivery" | "lotte-mart-delivery";
+type DocFormat = "samudera-bastb" | "kimia-farma-skb" | "kimia-farma-delivery" | "lotte-mart-delivery" | "dbm-cargo-invoice";
 type Status = "idle" | "converting" | "processing" | "done" | "error";
-type ResultData = SamuderaBastb | KimiaFarmaSkb | KimiaFarmaDelivery | LotteMartDelivery | null;
+type ResultData = SamuderaBastb | KimiaFarmaSkb | KimiaFarmaDelivery | LotteMartDelivery | DbmCargoInvoice | null;
 
 async function pdfToImages(file: File): Promise<string[]> {
   const pdfjsLib = await import("pdfjs-dist");
@@ -60,6 +61,12 @@ const FORMAT_CONFIG: Record<DocFormat, { label: string; description: string; end
     description: "Surat Jalan / Delivery Note",
     endpoint: "/api/ocr/lotte-mart-delivery",
     color: "red",
+  },
+  "dbm-cargo-invoice": {
+    label: "DBM Cargo Invoice",
+    description: "Invoice DBM Cargo & Logistics",
+    endpoint: "/api/ocr/dbm-cargo",
+    color: "orange",
   },
 };
 
@@ -220,6 +227,11 @@ export default function Home() {
         {/* ── Results: Lotte Mart Delivery ───────── */}
         {result && format === "lotte-mart-delivery" && (
           <LotteMartResult data={result as LotteMartDelivery} />
+        )}
+
+        {/* ── Results: DBM Cargo Invoice ──────────── */}
+        {result && format === "dbm-cargo-invoice" && (
+          <DbmCargoResult data={result as DbmCargoInvoice} />
         )}
 
         {/* Raw JSON */}
@@ -552,7 +564,79 @@ function LotteMartResult({ data }: { data: LotteMartDelivery }) {
 }
 
 // ─────────────────────────────────────────────
-// Shared Helper Components
+// DBM Cargo Invoice Result View
+// ─────────────────────────────────────────────
+
+function DbmCargoResult({ data }: { data: DbmCargoInvoice }) {
+  return (
+    <div className="space-y-4">
+      <Section title="Header Invoice">
+        <Row label="No. Invoice" value={data.header.no_invoice} />
+        <Row label="Tanggal" value={data.header.tanggal} />
+        <Row label="Jatuh Tempo" value={data.header.jatuh_tempo} />
+      </Section>
+      <Section title="Penerima (TO)">
+        <Row label="Nama" value={data.to.nama} />
+        <Row label="Alamat" value={data.to.alamat} />
+      </Section>
+      <Section title="Info Transfer">
+        <Row label="Perusahaan" value={data.transfer.nama_perusahaan} />
+        <Row label="No. Rekening" value={data.transfer.no_rekening} />
+        <Row label="Bank" value={data.transfer.nama_bank} />
+      </Section>
+      <Section title={`Items (${data.items.length})`}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs mt-2">
+            <thead>
+              <tr className="border-b border-gray-700">
+                <th className="text-left text-gray-400 py-2 pr-3">Tgl / AWB</th>
+                <th className="text-left text-gray-400 py-2 px-2">Jenis</th>
+                <th className="text-left text-gray-400 py-2 px-2">Dest</th>
+                <th className="text-right text-gray-400 py-2 px-2">KG</th>
+                <th className="text-right text-gray-400 py-2 px-2">Barang</th>
+                <th className="text-right text-gray-400 py-2 px-2">Packing</th>
+                <th className="text-right text-gray-400 py-2">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.items.map((item, i) => (
+                <tr key={i} className="border-b border-gray-800">
+                  <td className="py-2 pr-3">
+                    <p className="text-gray-200 font-medium">{item.tanggal}</p>
+                    <p className="text-gray-500 font-mono">{item.no_awb}</p>
+                  </td>
+                  <td className="text-gray-300 py-2 px-2">{item.jenis}</td>
+                  <td className="text-gray-300 py-2 px-2">{item.dest}</td>
+                  <td className="text-right text-gray-200 py-2 px-2">{item.barang.kg}</td>
+                  <td className="text-right text-gray-200 py-2 px-2">{item.barang.jumlah?.toLocaleString("id-ID")}</td>
+                  <td className="text-right text-gray-200 py-2 px-2">{item.packing.jumlah?.toLocaleString("id-ID")}</td>
+                  <td className="text-right text-gray-200 py-2">{item.total?.toLocaleString("id-ID")}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Section>
+      <Section title="Summary">
+        <Row label="Gross Barang" value={data.summary.gross_barang?.toLocaleString("id-ID")} />
+        <Row label="Gross Packing" value={data.summary.gross_packing?.toLocaleString("id-ID")} />
+        <Row label="Gross Total" value={data.summary.gross_total?.toLocaleString("id-ID")} />
+        <Row label="Discount" value={data.summary.discount?.toLocaleString("id-ID")} />
+        <Row label="Netto" value={data.summary.netto?.toLocaleString("id-ID")} />
+        <Row label={`PPN ${data.summary.ppn_persen}%`} value={data.summary.ppn_nominal?.toLocaleString("id-ID")} />
+        <Row label="Materai" value={data.summary.materai?.toLocaleString("id-ID")} />
+        <Row label="Total" value={data.summary.total?.toLocaleString("id-ID")} />
+      </Section>
+      {data.terbilang && (
+        <Section title="Terbilang">
+          <p className="text-gray-200 text-sm italic">{data.terbilang}</p>
+        </Section>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
 // ─────────────────────────────────────────────
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
